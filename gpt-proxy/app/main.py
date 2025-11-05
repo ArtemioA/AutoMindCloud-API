@@ -1,22 +1,22 @@
 import os
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
 import uvicorn
-import logging
 
-# Configurar logs
+# Configuración básica
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
 
-# Validar clave API
 if not os.getenv("OPENAI_API_KEY"):
     raise RuntimeError("OPENAI_API_KEY no está configurada en el entorno.")
 
-MODEL = os.getenv("MODEL", "gpt-4.1-mini")  # ✅ el mismo que te funciona
+# Usa el modelo que te funciona bien
+MODEL = os.getenv("MODEL", "gpt-4.1-mini")
 client = OpenAI()
 
-app = FastAPI(title="GPT Proxy", version="2.1")
+app = FastAPI(title="GPT Proxy", version="2.2")
 
 class InferenceIn(BaseModel):
     text: str
@@ -34,11 +34,11 @@ def health():
 @app.post("/infer", response_model=InferenceOut)
 def infer(payload: InferenceIn):
     try:
-        # Si hay imagen, usar exactamente el formato que probaste en Colab
+        # Si hay imagen, usa el mismo formato que funcionó en Colab
         if payload.image_b64:
             mime = payload.mime or "image/jpeg"
             data_url = f"data:{mime};base64,{payload.image_b64}"
-            log.info(f"[VISION] usando modelo {MODEL}, mime={mime}, len={len(payload.image_b64)}")
+            log.info(f"[VISION] modelo={MODEL}, mime={mime}, b64_len={len(payload.image_b64)}")
 
             resp = client.responses.create(
                 model=MODEL,
@@ -54,7 +54,7 @@ def infer(payload: InferenceIn):
             )
 
         else:
-            log.info(f"[TEXT] usando modelo {MODEL}")
+            log.info(f"[TEXT] modelo={MODEL}")
             resp = client.responses.create(
                 model=MODEL,
                 input=payload.text
