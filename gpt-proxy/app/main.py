@@ -1,68 +1,64 @@
-import os, logging
-from fastapi import FastAPI, HTTPException, Request
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
 import uvicorn
+import logging
 
-# Logging claro a stdout (Cloud Run lo captura)
+# Setup
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
 
 if not os.getenv("OPENAI_API_KEY"):
     raise RuntimeError("OPENAI_API_KEY no está configurada en el entorno.")
 
-# Prueba también con gpt-4.1-mini si tu key no tiene visión en 4o-mini
 MODEL = os.getenv("MODEL", "gpt-4o-mini")
 client = OpenAI()
 
-app = FastAPI(title="GPT Proxy", version="1.3")
+app = FastAPI(title="GPT Proxy", version="2.0")
 
 class InferenceIn(BaseModel):
     text: str
     image_b64: str | None = None
-    mime: str | None = None  # "image/jpeg" o "image/png"
+    mime: str | None = None  # ejemplo: image/jpeg
 
 class InferenceOut(BaseModel):
     model: str
     output: str
-    branch: str | None = None  # opcional, para debug rápido
 
 @app.get("/health")
 def health():
     return {"status": "ok", "model": MODEL}
 
 @app.post("/infer", response_model=InferenceOut)
-async def infer(payload: InferenceIn, request: Request):
+def infer(payload: InferenceIn):
     try:
-        # modo debug simple: /infer?debug=1 añade "branch" en la respuesta
-        debug = request.query_params.get("debug") == "1"
-
-        messages_content = [{"type": "text", "text": payload.text}]
-        branch = "text"
-
+        # Si hay imagen → usa el formato “responses.create” igual que tu ejemplo
         if payload.image_b64:
             mime = payload.mime or "image/jpeg"
             data_url = f"data:{mime};base64,{payload.image_b64}"
-            messages_content.append({
-                "type": "image_url",
-                "image_url": {"url": data_url}
-            })
-            branch = "vision"
-            log.info(f"[VISION] mime={mime} b64_len={len(payload.image_b64)}")
+            log.info(f"[VISION] usando modelo {MODEL}, mime={mime}, len={len(payload.image_b64)}")
 
+            resp = client.responses.create(
+                model=MODEL,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": payload.text},
+                            {"type": "input_image", "image_url": data_url},
+                        ],
+                    }
+                ],
+            )
         else:
-            log.info("[TEXT] sin imagen (no se recibió image_b64)")
+            log.info(f"[TEXT] usando modelo {MODEL}")
+            resp = client.responses.create(
+                model=MODEL,
+                input=payload.text
+            )
 
-        # Usamos SIEMPRE chat.completions (más robusto para visión)
-        chat = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": messages_content}],
-            temperature=0.2,
-        )
-        out = chat.choices[0].message.content
-
-        if debug:
-            return {"model": MODEL, "output": out, "branch": branch}
+        out = resp.output_text
         return {"model": MODEL, "output": out}
 
     except Exception as e:
