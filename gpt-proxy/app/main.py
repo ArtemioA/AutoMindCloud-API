@@ -12,7 +12,7 @@ MODEL = os.getenv("MODEL", "gpt-4.1-mini")  # modelo con visión
 MAX_REQ_BYTES = 32 * 1024 * 1024  # 32 MiB
 client = OpenAI()
 
-app = FastAPI(title="GPT Proxy", version="3.0-multiimage")
+app = FastAPI(title="GPT Proxy", version="3.1-outputstring")
 
 # --- Modelos Pydantic ---
 class ImageInput(BaseModel):
@@ -23,21 +23,17 @@ class InferenceIn(BaseModel):
     text: str
     images: Optional[List[ImageInput]] = Field(default=None, description="Lista de imágenes en base64")
 
-class InferenceOut(BaseModel):
-    model: str
-    output: str
-    debug: Optional[Dict[str, Any]] = None
-
 # --- Endpoints ---
 @app.get("/health")
 def health():
     return {"status": "ok", "model": MODEL}
 
-@app.post("/infer", response_model=InferenceOut)
+@app.post("/infer")
 def infer(payload: InferenceIn):
     try:
+        # construye contenido para el modelo
         content: List[Dict[str, Any]] = [{"type": "input_text", "text": payload.text}]
-        debug: Dict[str, Any] = {"num_images": 0, "total_bytes": 0, "mimes": []}
+        total_bytes = 0
 
         # procesar lista de imágenes (si hay)
         if payload.images:
@@ -50,12 +46,10 @@ def infer(payload: InferenceIn):
                 except binascii.Error:
                     raise HTTPException(status_code=400, detail="Una de las imágenes no es base64 válida.")
 
-                decoded_len = len(img_bytes)
-                debug["total_bytes"] += decoded_len
-                if debug["total_bytes"] > MAX_REQ_BYTES:
+                total_bytes += len(img_bytes)
+                if total_bytes > MAX_REQ_BYTES:
                     raise HTTPException(status_code=413, detail="Demasiados datos (~>32 MiB en total).")
 
-                # detectar MIME si falta
                 if not img.mime:
                     import imghdr
                     fmt = imghdr.what(None, h=img_bytes)
@@ -64,16 +58,14 @@ def infer(payload: InferenceIn):
                 data_url = f"data:{img.mime};base64,{img.image_b64}"
                 content.append({"type": "input_image", "image_url": data_url})
 
-                debug["mimes"].append(img.mime)
-                debug["num_images"] += 1
-
-        # llamar al modelo
+        # Llamar al modelo
         resp = client.responses.create(
             model=MODEL,
             input=[{"role": "user", "content": content}],
         )
 
-        return resp.output_text#{"model": MODEL, "output": resp.output_text, "debug": debug}
+        # 🔹 Solo devolvemos el texto del modelo
+        return resp.output_text
 
     except HTTPException:
         raise
