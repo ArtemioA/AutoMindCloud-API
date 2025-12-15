@@ -1,15 +1,26 @@
-options:
-  logging: CLOUD_LOGGING_ONLY
-
 steps:
-  - name: gcr.io/cloud-builders/docker
-    dir: gpt-proxy
+  # Paso 1: Construir la imagen de Docker
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/gpt-proxy', '.']
+
+  # Paso 2: Subir la imagen al Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/gpt-proxy']
+
+  # Paso 3: Desplegar a Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
-      - build
-      - -t
-      - us-central1-docker.pkg.dev/$PROJECT_ID/roboticartifact/gpt-proxy:$COMMIT_SHA
-      - .
+      - 'gcloud'
+      - 'run'
+      - 'deploy'
+      - 'gpt-proxy'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/gpt-proxy'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
 
 images:
-  - us-central1-docker.pkg.dev/$PROJECT_ID/roboticartifact/gpt-proxy:$COMMIT_SHA
-
+  - 'gcr.io/$PROJECT_ID/gpt-proxy'
