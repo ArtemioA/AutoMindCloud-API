@@ -1,2 +1,3 @@
 # AutoMindCloud API
-<img width="400" height="400" alt="acabada1" src="https://github.com/user-attachments/assets/41993904-243d-4d20-aee1-c3c17c844f2f" />
+
+<img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/a06dcf7b-84ad-4b6e-9b92-c0da2eaa8d8a" />
